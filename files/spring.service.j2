@@ -1,0 +1,14 @@
+[Unit]
+Description=Spring Boot app
+After=network.target
+
+[Service]
+User=azureuser
+WorkingDirectory={{ appdir }}
+ExecStart=/usr/bin/java -jar {{ appdir }}/app.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

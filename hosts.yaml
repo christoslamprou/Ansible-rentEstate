@@ -1,0 +1,19 @@
+---
+azurehosts:
+  hosts:
+    devops-vm:
+      ansible_host: az-devops
+
+
+appservers:
+  hosts:
+    devops-vm-app:
+      ansible_host: az-devops
+      ansible_user: azureuser
+
+
+dbservers:
+  hosts:
+    devops-vm-db:
+      ansible_host: az-devops
+      ansible_user: azureuser
