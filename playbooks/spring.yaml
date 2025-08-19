@@ -2,6 +2,7 @@
 - hosts: appservers
 
   pre_tasks:
+    # Install Java (required to build and run the Spring Boot app)
     - name: Install Java
       apt:
           name: openjdk-21-jdk
@@ -47,6 +48,11 @@
           command: "./mvnw package -Dmaven.test.skip "
           args:
               chdir: "{{ appdir }}"
+
+  #      - name: "Run the Spring application"
+  #        command: "java -jar target/springbootdemo-0.0.1-SNAPSHOT.jar"
+  #        args:
+  #            chdir: "{{ appdir }}"
 
         rescue:
           # If build fails, retrieve the correct Maven checksum file

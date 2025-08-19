@@ -1,14 +1,12 @@
 [Unit]
-Description=Spring Boot app
+Description=spring boot daemon
 After=network.target
 
 [Service]
-User=azureuser
-WorkingDirectory={{ appdir }}
-ExecStart=/usr/bin/java -jar {{ appdir }}/app.jar
-SuccessExitStatus=143
-Restart=always
-RestartSec=5
+User={{appuser}}
+Group={{appgroup}}
+WorkingDirectory={{service.workingdir}}
+ExecStart={{service.execstart}}
 
 [Install]
 WantedBy=multi-user.target
