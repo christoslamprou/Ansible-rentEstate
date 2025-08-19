@@ -1,0 +1,85 @@
+---
+- hosts: appservers
+  become: yes
+
+  tasks:
+    # Check if Docker & Compose v2 exist
+    - name: Check if Docker is installed
+      ansible.builtin.shell: docker --version && docker compose version
+      register: docker_version_result
+      changed_when: false
+      ignore_errors: true
+
+    - name: Set Docker installed fact
+      ansible.builtin.set_fact:
+        docker_installed: "{{ docker_version_result.rc == 0 }}"
+
+    - name: Install Docker if not present
+      ansible.builtin.include_tasks: docker.yaml
+      when: not docker_installed
+
+    # Get code
+    - name: Clone the Spring repository
+      ansible.builtin.git:
+        repo: "https://github.com/christoslamprou/rentEstate.git"
+        dest: "{{ appdir }}"
+        version: "{{ branch }}"
+        force: yes
+
+    # App config
+    - name: Populate application.properties
+      ansible.builtin.lineinfile:
+        dest: "{{ appdir }}/src/main/resources/application.properties"
+        state: present
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+      loop: "{{ app.env | dict2items }}"
+
+    - name: Ensure appdir exists
+      ansible.builtin.file:
+        path: "{{ appdir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Stop/disable host PostgreSQL
+      service:
+       name: "{{ item }}"
+       state: stopped
+       enabled: no
+      loop:
+        - postgresql
+        - postgresql@16-main
+        - postgresql-16
+      ignore_errors: yes
+
+
+    # Preflight: ensure host port 5432 is free (since db publishes 5432:5432)
+    - name: Check if host port 5432 is occupied
+      ansible.builtin.shell: ss -ltn 'sport = :5432' | awk 'NR>1'
+      register: port_5432
+      changed_when: false
+
+    - name: Fail if 5432 is in use
+      ansible.builtin.fail:
+        msg: "Host port 5432 is in use. Free it (stop host Postgres/containers) or change compose mapping to 5433:5432."
+      when: port_5432.stdout | length > 0
+
+    # Compose lifecycle
+    - name: Tear down existing services
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        state: absent
+
+    - name: Create and start services
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        build: always
+        state: present
+      register: output
+      notify: Restart Docker Compose
+
+  handlers:
+    - name: Restart Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        state: restarted
