@@ -1,0 +1,90 @@
+---
+- name: install postgres
+  hosts: dbservers
+  become: yes
+  become_user: root
+ 
+  tasks:
+    - name: install postgres  and pip packages
+      apt:
+        name: postgresql, python3-pip
+        state: present
+        update_cache: yes
+      tags:
+        - install
+
+    - block:
+
+        # Enable listening on all IP addresses in postgresql.conf
+        - name: edit postgres.conf
+          lineinfile:
+            path: /etc/postgresql/16/main/postgresql.conf
+            regexp: '^#listen_addresses ='
+            line:  "listen_addresses='*'"
+          notify:
+            - restart postgres
+          tags:
+            - edit
+
+        # Allow remote connections from any IP using md5 authentication
+        - name: edit pg_hba.conf
+          lineinfile:
+            path: /etc/postgresql/16/main/pg_hba.conf
+            line:  "host	all	all	0.0.0.0/0	md5"
+            create: yes
+          notify:
+            - restart postgres
+          tags:
+            - edit
+
+      when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '24.04'
+
+
+    - block:
+        # Create a PostgreSQL user with password
+        - name: create postgres user
+          postgresql_user:
+            name: dbuser
+            password: 'db12345'
+          become: yes
+          become_user: postgres
+
+        # Create a database owned by the new user
+        - name: create postgres database
+          postgresql_db:
+            name: mydb
+            owner: dbuser
+          become: yes
+          become_user: postgres
+      rescue:
+      
+        - name: apt install psycopg2-binary
+          apt:
+            name: python3-psycopg2
+            state: present
+          tags:
+            - install
+
+      always:
+        # Ensure user creation is retried regardless of previous failure
+        - name: create postgres user
+          postgresql_user:
+            name: dbuser
+            password: 'db12345'
+          become: yes
+          become_user: postgres
+
+          # Ensure database creation is retried regardless of previous failure
+        - name: create postgres database
+          postgresql_db:
+            name: mydb
+            owner: dbuser
+          become: yes
+          become_user: postgres
+
+  handlers:
+    # Restart PostgreSQL service when notified by configuration changes
+    - name: restart postgres
+      service:
+        name: postgresql
+        state: restarted

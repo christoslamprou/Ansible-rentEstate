@@ -1,0 +1,171 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rentestate
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: rentestate
+type: Opaque
+stringData:
+  POSTGRES_USER: dbuser
+  POSTGRES_PASSWORD: db12345
+  POSTGRES_DB: mydb
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: rentestate
+data:
+  SERVER_PORT: "8080"
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mydb
+---
+# Postgres headless Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: rentestate
+spec:
+  selector:
+    app: postgres
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+  clusterIP: None
+---
+# Postgres StatefulSet + PVC
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: rentestate
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgres-secret
+          readinessProbe:
+            exec:
+              command: ["bash","-c","pg_isready -U $POSTGRES_USER -h 127.0.0.1"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["bash","-c","pg_isready -U $POSTGRES_USER -h 127.0.0.1"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+# Spring Boot Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rentestate-app
+  namespace: rentestate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rentestate-app
+  template:
+    metadata:
+      labels:
+        app: rentestate-app
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/skk137/rentestate2:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+          envFrom:
+            - configMapRef:
+                name: app-config
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8080 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "200m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+---
+# ClusterIP service for the app (internal)
+apiVersion: v1
+kind: Service
+metadata:
+  name: rentestate-app
+  namespace: rentestate
+spec:
+  selector:
+    app: rentestate-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+---
+# Ingress for host: dns-cloud.net
+# Requires an ingress controller (e.g., nginx) running in your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rentestate-app
+  namespace: rentestate
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: spring.christoslamprou.cloudns.pro
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rentestate-app
+                port:
+                  number: 8080
