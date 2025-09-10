@@ -4,7 +4,7 @@
   gather_facts: no
 
   vars:
-    kubeconfig: "/home/azureuser/.kube/config"   # change if needed
+    kubeconfig: "/home/azureuser/.kube/config"
     namespace: "rentestate"
     deployment_name: "rentestate-app"
     container_name: "app"
@@ -20,7 +20,7 @@
         state: present
         update_cache: yes
 
-    # Use apt packages to avoid PEP-668 issues
+
     - name: Install required Python deps for Kubernetes
       apt:
         name:
