@@ -1,16 +1,32 @@
----
 - name: Update Kubernetes Deployment Image (rentestate)
-  hosts: localhost
+  hosts: appservers
+  become: yes
   gather_facts: no
 
   vars:
-    kubeconfig: "/var/lib/jenkins/.kube/devops-microk8s"   # path
+    kubeconfig: "/home/azureuser/.kube/config"   # change if needed
     namespace: "rentestate"
     deployment_name: "rentestate-app"
     container_name: "app"
     new_image: "ghcr.io/skk137/rentestate2:latest"
-
     selector_label: "app=rentestate-app"
+
+  pre_tasks:
+    - name: Ensure Python and pip are installed
+      apt:
+        name:
+          - python3-pip
+          - python3-venv
+        state: present
+        update_cache: yes
+
+    # Use apt packages to avoid PEP-668 issues
+    - name: Install required Python deps for Kubernetes
+      apt:
+        name:
+          - python3-kubernetes
+          - python3-openshift
+        state: present
 
   tasks:
     - name: Show current image (before)
@@ -21,7 +37,7 @@
         name: "{{ deployment_name }}"
       register: dep_before
 
-    - name: Update the deployment image (strategic merge)
+    - name: Update the deployment image
       kubernetes.core.k8s:
         state: present
         kubeconfig: "{{ kubeconfig }}"
@@ -36,13 +52,20 @@
                   - name: "{{ container_name }}"
                     image: "{{ new_image }}"
 
-    - name: Wait for rollout to complete
-      command: kubectl rollout status deployment/{{ deployment_name }} -n {{ namespace }} --timeout=360s
-      register: rollout_result
-      environment:
-        KUBECONFIG: "{{ kubeconfig }}"
-      failed_when: "'successfully rolled out' not in rollout_result.stdout"
-      changed_when: false
+    - name: Poll deployment status until all replicas are available
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        name: "{{ deployment_name }}"
+      register: dep_status
+      until: >
+        (dep_status.resources | length) > 0 and
+        (dep_status.resources[0].status.availableReplicas | default(0)) ==
+        (dep_status.resources[0].spec.replicas | default(0))
+      retries: 60
+      delay: 6
 
     - name: Get pods of this deployment
       kubernetes.core.k8s_info:
@@ -57,7 +80,6 @@
       set_fact:
         container_images: "{{ pod_list.resources | json_query(query) | list }}"
       vars:
-        # JMESPath: για κάθε pod,παίρνει το image του container με name == container_name
         query: "[?status.phase=='Running'].spec.containers[?name=='{{ container_name }}'].image[]"
 
     - name: Fail if any running pod is NOT using the new image
@@ -67,14 +89,6 @@
           Found images: {{ (container_images | unique) | join(', ') }}
       when: >
         ((container_images | unique) | difference([new_image])) | length > 0
-
-    - name: Show final image (after)
-      kubernetes.core.k8s_info:
-        kubeconfig: "{{ kubeconfig }}"
-        kind: Deployment
-        namespace: "{{ namespace }}"
-        name: "{{ deployment_name }}"
-      register: dep_after
 
     - name: Summary
       debug:
