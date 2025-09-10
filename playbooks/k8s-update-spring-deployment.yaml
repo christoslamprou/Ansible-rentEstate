@@ -1,0 +1,85 @@
+---
+- name: Update Kubernetes Deployment Image (rentestate)
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    kubeconfig: "/var/lib/jenkins/.kube/devops-microk8s"   # path
+    namespace: "rentestate"
+    deployment_name: "rentestate-app"
+    container_name: "app"
+    new_image: "ghcr.io/skk137/rentestate2:latest"
+
+    selector_label: "app=rentestate-app"
+
+  tasks:
+    - name: Show current image (before)
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        name: "{{ deployment_name }}"
+      register: dep_before
+
+    - name: Update the deployment image (strategic merge)
+      kubernetes.core.k8s:
+        state: present
+        kubeconfig: "{{ kubeconfig }}"
+        namespace: "{{ namespace }}"
+        kind: Deployment
+        name: "{{ deployment_name }}"
+        definition:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: "{{ container_name }}"
+                    image: "{{ new_image }}"
+
+    - name: Wait for rollout to complete
+      command: kubectl rollout status deployment/{{ deployment_name }} -n {{ namespace }} --timeout=360s
+      register: rollout_result
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      failed_when: "'successfully rolled out' not in rollout_result.stdout"
+      changed_when: false
+
+    - name: Get pods of this deployment
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - "{{ selector_label }}"
+      register: pod_list
+
+    - name: Collect images of target container from running pods
+      set_fact:
+        container_images: "{{ pod_list.resources | json_query(query) | list }}"
+      vars:
+        # JMESPath: για κάθε pod,παίρνει το image του container με name == container_name
+        query: "[?status.phase=='Running'].spec.containers[?name=='{{ container_name }}'].image[]"
+
+    - name: Fail if any running pod is NOT using the new image
+      fail:
+        msg: >-
+          One or more pods do not run the expected image {{ new_image }}.
+          Found images: {{ (container_images | unique) | join(', ') }}
+      when: >
+        ((container_images | unique) | difference([new_image])) | length > 0
+
+    - name: Show final image (after)
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Deployment
+        namespace: "{{ namespace }}"
+        name: "{{ deployment_name }}"
+      register: dep_after
+
+    - name: Summary
+      debug:
+        msg:
+          - "Updated deployment: {{ deployment_name }}"
+          - "Container: {{ container_name }}"
+          - "New image: {{ new_image }}"
+          - "Pods using image: {{ (container_images | unique) | join(', ') }}"
