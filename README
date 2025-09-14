@@ -1,6 +1,6 @@
 # Ansible Deployment for RentEstate
 
-This project contains Αnsible playbooks for installing and running  PostgreSQL and the Spring Boot application, as well as enabling **Docker** and updating the **Kubernetes deployment**.
+This project contains Αnsible playbooks for installing and running  PostgreSQL and the Spring Boot application, as well as enabling Docker and updating the Kubernetes deployment.
 
 
 ## Start Database & Spring Boot
