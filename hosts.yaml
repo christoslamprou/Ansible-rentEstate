@@ -1,16 +1,19 @@
 ---
-azurehosts:             # Ομάδα hosts μπορεί να χρησιμοποιηθεί για global tasks
+# Global hosts
+azurehosts:
   hosts:
-    devops-vm:          # Όνομα host μέσα στο inventory
-      ansible_host: az-devops   # Το πραγματικό hostname/IP
+    devops-vm:
+      ansible_host: az-devops
 
-appservers:             # Ομάδα servers που τρέχουν την εφαρμογή
+# App servers
+appservers:
   hosts:
-    devops-vm-app:      # Host label μπορεί να είναι ίδιο μηχάνημα με διαφορετικό ρόλο
-      ansible_host: az-devops   # Σύνδεση στο ίδιο host
-      ansible_user: azureuser   # SSH user για σύνδεση
+    devops-vm-app:
+      ansible_host: az-devops
+      ansible_user: azureuser
 
-dbservers:              # Ομάδα servers που τρέχουν τη βάση δεδομένων
+# Database servers
+dbservers:
   hosts:
     devops-vm-db:
       ansible_host: az-devops

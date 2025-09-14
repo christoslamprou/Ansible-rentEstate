@@ -1,18 +1,18 @@
 - name: Update Kubernetes Deployment Image (rentestate)
   hosts: appservers
   become: yes
-  gather_facts: no   # Δουλεύουμε με Kubernetes API
+  gather_facts: no
 
   vars:
-    kubeconfig: "/home/azureuser/.kube/config"  # Path στο kubeconfig για auth
-    namespace: "rentestate"                     # Namespace όπου τρέχει η εφαρμογή
-    deployment_name: "rentestate-app"           # Το όνομα του Deployment
-    container_name: "app"                       # Container name μέσα στο Pod spec
-    new_image: "ghcr.io/skk137/rentestate2:latest" # Νέα Docker image που θα γίνει deploy
-    selector_label: "app=rentestate-app"        # Label selector για pods
+    kubeconfig: "/home/azureuser/.kube/config"
+    namespace: "rentestate"
+    deployment_name: "rentestate-app"
+    container_name: "app"
+    new_image: "ghcr.io/skk137/rentestate2:latest"
+    selector_label: "app=rentestate-app"
 
   pre_tasks:
-    # Βεβαιώνεται ότι υπάρχουν Python και pip τα οποία είναι απαραίτητα για Kubernetes modules
+    # Install Python and pip
     - name: Ensure Python and pip are installed
       apt:
         name:
@@ -21,7 +21,7 @@
         state: present
         update_cache: yes
 
-    # Εγκαθιστά Python dependencies για Kubernetes και OpenShift modules
+    # Install Python deps for Kubernetes
     - name: Install required Python deps for Kubernetes
       apt:
         name:
@@ -30,7 +30,7 @@
         state: present
 
   tasks:
-    # Δείχνει το τρέχον image πριν την αλλαγή
+    # Show current image
     - name: Show current image (before)
       kubernetes.core.k8s_info:
         kubeconfig: "{{ kubeconfig }}"
@@ -39,7 +39,7 @@
         name: "{{ deployment_name }}"
       register: dep_before
 
-    # Κάνει patch το Deployment ώστε να χρησιμοποιεί το νέο image
+    # Update image
     - name: Update the deployment image
       kubernetes.core.k8s:
         state: present
@@ -55,7 +55,7 @@
                   - name: "{{ container_name }}"
                     image: "{{ new_image }}"
 
-    # Περιμένει μέχρι να ολοκληρωθεί το rolling update για όλα τα replicas διαθέσιμα
+    # Wait for rollout
     - name: Poll deployment status until all replicas are available
       kubernetes.core.k8s_info:
         kubeconfig: "{{ kubeconfig }}"
@@ -68,10 +68,10 @@
         (dep_status.resources | length) > 0 and
         (dep_status.resources[0].status.availableReplicas | default(0)) ==
         (dep_status.resources[0].spec.replicas | default(0))
-      retries: 60   # Μέχρι 6 λεπτά retry
-      delay: 6      # Κάθε 6 δευτερόλεπτα
+      retries: 60
+      delay: 6
 
-    # Παίρνει τα Pods αυτού του Deployment
+    # Get pods
     - name: Get pods of this deployment
       kubernetes.core.k8s_info:
         kubeconfig: "{{ kubeconfig }}"
@@ -81,14 +81,14 @@
           - "{{ selector_label }}"
       register: pod_list
 
-    # Συλλέγει τα images των containers που τρέχουν αυτή τη στιγμή
+    # Collect images from pods
     - name: Collect images of target container from running pods
       set_fact:
         container_images: "{{ pod_list.resources | json_query(query) | list }}"
       vars:
         query: "[?status.phase=='Running'].spec.containers[?name=='{{ container_name }}'].image[]"
 
-    # Αν υπάρχει pod που δεν τρέχει με το νέο image → αποτυγχάνει το playbook
+    # Fail if wrong image
     - name: Fail if any running pod is NOT using the new image
       fail:
         msg: >-
@@ -97,7 +97,7 @@
       when: >
         ((container_images | unique) | difference([new_image])) | length > 0
 
-    # Εμφανίζει ανακεφαλαίωση στο τέλος
+    # Summary
     - name: Summary
       debug:
         msg:

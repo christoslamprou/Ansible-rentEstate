@@ -1,5 +1,4 @@
-
-# Namespace για την εφαρμογή
+# Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,7 +6,7 @@ metadata:
 
 ---
 
-# Secret για Postgres credentials
+# Postgres Secret
 apiVersion: v1
 kind: Secret
 metadata:
@@ -16,12 +15,12 @@ metadata:
 type: Opaque
 stringData:
   POSTGRES_USER: dbuser
-  POSTGRES_PASSWORD: db12345   
+  POSTGRES_PASSWORD: db12345
   POSTGRES_DB: mydb
 
 ---
 
-# ConfigMap για app settings
+# App ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,7 +32,7 @@ data:
 
 ---
 
-# Headless Service για Postgres
+# Postgres Service (headless)
 apiVersion: v1
 kind: Service
 metadata:
@@ -46,11 +45,11 @@ spec:
     - name: pg
       port: 5432
       targetPort: 5432
-  clusterIP: None   # headless service  για statefulset
+  clusterIP: None
 
 ---
 
-# StatefulSet για Postgres
+# Postgres StatefulSet
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -88,7 +87,7 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:      # PVC για persistence
+  volumeClaimTemplates:
     - metadata:
         name: data
       spec:
@@ -98,7 +97,8 @@ spec:
             storage: 5Gi
 
 ---
-# Deployment για Spring Boot app
+
+# Spring Boot Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -146,7 +146,8 @@ spec:
             limits:   { cpu: "500m", memory: "512Mi" }
 
 ---
-# ClusterIP Service για το app
+
+# Spring Boot Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -159,10 +160,11 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-  type: ClusterIP   # Μόνο για internal access, external μέσω Ingress
+  type: ClusterIP
 
 ---
-# Ingress για external access
+
+# Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

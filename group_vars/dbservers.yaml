@@ -1,4 +1,5 @@
-db:                       # Ρυθμίσεις για τη βάση δεδομένων
-  name: "mydb"            
-  user: "dbuser"          # Όνομα χρήστη που θα συνδέεται στη βάση
-  password: "db12345"     # Κωδικός πρόσβασης για τον χρήστη
+# Database config
+db:
+  name: "mydb"
+  user: "dbuser"
+  password: "db12345"

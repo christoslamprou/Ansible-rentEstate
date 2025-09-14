@@ -1,8 +1,9 @@
 ---
+# Deploy Spring Boot app with Nginx
 - hosts: appservers
 
   pre_tasks:
-    # Εγκαθιστά Java 21 απαραίτητη για Spring Boot app
+    # Install Java
     - name: Install Java
       apt:
         name: openjdk-21-jdk
@@ -11,12 +12,12 @@
       become: yes
 
   tasks:
-    # Debug: εμφανίζει το appdir το οποίο χρήσιμο για troubleshooting
+    # Debug appdir
     - name: "debug appdir"
       ansible.builtin.debug:
         msg: "appdir {{ansible_user_dir}}"
 
-    # Κάνει clone το Spring Boot project από GitHub
+    # Clone Spring project
     - name: "Clone the Spring repository"
       git:
         repo: "https://github.com/skk137/rentEstate2.git"
@@ -24,7 +25,7 @@
         version: "{{ branch }}"
         force: yes
 
-    # Γράφει application.properties από variables του app.env
+    # Update application.properties
     - name: "Populate application.properties"
       lineinfile:
         dest: "{{ appdir }}/src/main/resources/application.properties"
@@ -34,24 +35,21 @@
       with_items:
         - "{{app.env | dict2items}}"
 
-    # Βεβαιώνεται ότι το mvnw script είναι εκτελέσιμο
+    # Make mvnw executable
     - name: Ensure mvnw is executable
       file:
         path: "{{ appdir }}/mvnw"
         mode: '0755'
 
-    # Block: Προσπάθεια build με Maven και fallback σε checksum fix
+    # Build Spring app
     - name: "Build spring project"
       block:
-
-        # Πρώτη προσπάθεια build
         - name: "Build the Spring application"
           command: "./mvnw package -Dmaven.test.skip"
           args:
             chdir: "{{ appdir }}"
 
       rescue:
-        # Αν αποτύχει, κατεβάζει το SHA512 checksum του Maven
         - name: Fetch the SHA-512 checksum for Maven 3.9.9
           get_url:
             url: https://downloads.apache.org/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.zip.sha512
@@ -59,19 +57,16 @@
             validate_certs: yes
             force: yes
 
-        # Διαβάζει το checksum
         - name: Read the SHA-512 checksum from the file
           command: cat /tmp/maven_sha512.txt
           register: sha512_checksum
 
-        # Κάνει update το maven-wrapper.properties με το σωστό checksum
         - name: Replace the distributionSha512Sum line in maven-wrapper.properties
           replace:
             path: "{{ appdir }}/.mvn/wrapper/maven-wrapper.properties"
             regexp: '^distributionSha'
             replace: "distributionSha512Sum={{ sha512_checksum.stdout }}"
 
-        # Σβήνει το προσωρινό αρχείο
         - name: Clean up the temporary file
           file:
             path: /tmp/maven_sha512.txt
@@ -79,13 +74,12 @@
           when: sha512_checksum is defined
 
       always:
-        # Προσπαθεί ξανά το build πάντα
         - name: "Build the Spring application"
           command: "./mvnw package -Dmaven.test.skip"
           args:
             chdir: "{{ appdir }}"
 
-    # Αντιγράφει το systemd unit file για την εφαρμογή
+    # Copy systemd service
     - name: copy spring service file
       template:
         src: ../files/spring.service.j2
@@ -94,14 +88,14 @@
       become_user: root
       notify: restart spring
 
-    # Κάνει restart το Spring service για να πάρει αλλαγές
+    # Restart Spring service
     - name: reload spring service
       service:
         name: spring
         state: restarted
       become: yes
 
-    # Βεβαιώνεται ότι το Spring service τρέχει και ξεκινάει στο boot
+    # Ensure Spring service is enabled
     - name: ensure spring service started
       service:
         name: spring
@@ -109,21 +103,21 @@
         enabled: yes
       become: yes
 
-    # Εγκαθιστά Nginx με το reverse proxy
+    # Install Nginx
     - name: "APT - install nginx"
       apt:
         name: nginx
         update_cache: yes
       become: yes
 
-    # Αντιγράφει το Nginx config
+    # Copy Nginx config
     - name: copy nginx conf file
       template:
         src: ../files/nginx.http.j2
         dest: "/etc/nginx/sites-available/spring"
       become: yes
 
-    # Κάνει symlink το config στο sites-enabled
+    # Enable Nginx site
     - name: enable spring site in nginx
       file:
         src: "/etc/nginx/sites-available/spring"
@@ -132,7 +126,7 @@
       become: yes
       notify: restart nginx
 
-    # Απενεργοποιεί το default site του Nginx
+    # Disable default Nginx site
     - name: de-activate default nginx site
       file:
         path: /etc/nginx/sites-enabled/default
@@ -141,14 +135,14 @@
       notify: restart nginx
 
   handlers:
-    # Restart Spring service αν αλλάξει το systemd unit file
+    # Restart Spring
     - name: restart spring
       service:
         name: spring
         state: restarted
       become: yes
 
-    # Restart Nginx για να φορτωθεί το νέο config
+    # Restart Nginx
     - name: restart nginx
       service:
         name: nginx
