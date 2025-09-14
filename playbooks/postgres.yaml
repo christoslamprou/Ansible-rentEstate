@@ -1,0 +1,90 @@
+---
+- name: install postgres
+  hosts: dbservers          # Θα τρέξει στους servers που ανήκουν στην ομάδα dbservers
+  become: yes               # Εκτέλεση με sudo
+  become_user: root         
+
+  tasks:
+    # Εγκαθιστά PostgreSQL και pip είναι απαραίτητο 
+    - name: install postgres and pip packages
+      apt:
+        name: postgresql, python3-pip
+        state: present
+        update_cache: yes
+      tags:
+        - install
+
+    - block:
+        # Επεξεργασία postgresql.conf για να ακούει σε όλες τις IPs
+        - name: edit postgres.conf
+          lineinfile:
+            path: /etc/postgresql/16/main/postgresql.conf
+            regexp: '^#listen_addresses ='
+            line:  "listen_addresses='*'"
+          notify:
+            - restart postgres
+          tags:
+            - edit
+
+        # Επεξεργασία pg_hba.conf για να επιτρέπονται remote connections με md5 auth
+        - name: edit pg_hba.conf
+          lineinfile:
+            path: /etc/postgresql/16/main/pg_hba.conf
+            line:  "host	all	all	0.0.0.0/0	md5"
+            create: yes
+          notify:
+            - restart postgres
+          tags:
+            - edit
+
+      # Αυτό τρέχει μόνο σε Ubuntu 24.04 
+      when: ansible_distribution == 'Ubuntu' and ansible_distribution_version == '24.04'
+
+    - block:
+        # Δημιουργία PostgreSQL χρήστη με κωδικό
+        - name: create postgres user
+          postgresql_user:
+            name: dbuser
+            password: 'db12345'
+          become: yes
+          become_user: postgres
+
+        # Δημιουργία βάσης που ανήκει στον χρήστη
+        - name: create postgres database
+          postgresql_db:
+            name: mydb
+            owner: dbuser
+          become: yes
+          become_user: postgres
+
+      # Αν αποτύχει (π.χ. λόγω έλλειψης psycopg2)
+      rescue:
+        - name: apt install psycopg2-binary
+          apt:
+            name: python3-psycopg2
+            state: present
+          tags:
+            - install
+
+      # Αυτά θα εκτελεστούν πάντα (retry για user & db creation)
+      always:
+        - name: create postgres user
+          postgresql_user:
+            name: dbuser
+            password: 'db12345'
+          become: yes
+          become_user: postgres
+
+        - name: create postgres database
+          postgresql_db:
+            name: mydb
+            owner: dbuser
+          become: yes
+          become_user: postgres
+
+  handlers:
+    # Restart PostgreSQL όταν γίνει notify (μετά από αλλαγή configs)
+    - name: restart postgres
+      service:
+        name: postgresql
+        state: restarted

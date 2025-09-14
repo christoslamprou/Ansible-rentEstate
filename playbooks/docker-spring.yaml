@@ -1,0 +1,65 @@
+---
+- hosts: appservers        # Οι servers στους οποίους θα τρέξει το playbook
+  become: yes              # Εκτέλεση με sudo (root) δικαιώματα
+  tasks:
+
+    # Έλεγχος αν υπάρχει ήδη Docker & Docker Compose v2
+    - name: Check if Docker is installed
+      shell: docker --version && docker compose version
+      register: docker_version_result
+      ignore_errors: true   # Δεν σταματάει το playbook αν λείπει το Docker
+
+    # Δημιουργία fact (μεταβλητής) για το αν είναι εγκατεστημένο το Docker
+    - name: Set Docker installed fact
+      set_fact:
+        docker_installed: "{{ docker_version_result.rc == 0 }}"
+
+    # Αν ΔΕΝ είναι εγκατεστημένο το Docker θα τρέξει τα tasks από docker.yaml
+    - name: Install Docker if not present
+      include_tasks: docker.yaml
+      when: not docker_installed
+
+    # Κάνει clone το Spring Boot project από GitHub στο appdir
+    - name: "Clone the Spring repository"
+      git:
+        repo: "https://github.com/skk137/rentEstate2.git"
+        dest: "{{ appdir }}"   # Ο φάκελος που θα μπει το project
+        version: "{{ branch }}"# Branch που θα κατέβει
+        force: yes             # Ξαναγράφει τοπικές αλλαγές
+
+    # Γράφει properties στο application.properties με βάση τις μεταβλητές env
+    - name: "Populate application.properties"
+      lineinfile:
+        dest: "{{ appdir }}/src/main/resources/application.properties"
+        state: present
+        regexp: "^{{item.key}}="
+        line: "{{item.key}}={{item.value}}"
+      with_items:
+        - "{{app.env | dict2items}}"   # Μετατρέπει το dict σε key=value
+
+    # Αντιγράφει υπάρχον .envfile στον φάκελο του app
+    - name: "Copy existing .envfile to appdir"
+      shell: cp /home/azureuser/.envfile {{ appdir }}/.envfile
+      become: yes
+
+    # Σταματάει και καθαρίζει ό,τι οι containers τρέχουν ήδη για το project
+    - name: Tear down existing services
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        state: absent
+
+    # Κάνει build και ξεκινάει ξανά τα services με Docker Compose
+    - name: Create and start services
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        build: always
+        state: present
+      register: output
+      notify: Restart Docker Compose   # Αν αλλάξει κάτι τότε κάνει restart handler
+
+  handlers:
+    # Ορίζεται handler για restart services όταν γίνει notify
+    - name: Restart Docker Compose
+      community.docker.docker_compose_v2:
+        project_src: "{{ appdir }}"
+        state: restarted

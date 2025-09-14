@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spring-ingress
+  annotations:
+    ingress.kubernetes.io/rewrite-target: /            
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"    # Ενεργοποιεί SSL redirect
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true" # Επιβάλλει HTTPS redirect
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"  # cert-manager ClusterIssuer για αυτόματη έκδοση Let's Encrypt certs
+spec:
+  ingressClassName: nginx                               # Χρησιμοποιεί nginx ingress controller
+  rules:
+    - host: spring.christoslamprou.cloudns.pro          # Το domain που θα σερβίρει
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rentestate-app                    # To Service που δείχνει η εφαρμογή σου
+                port:
+                  name: rentestate-app                 
+  tls:
+    - hosts:
+        - spring.christoslamprou.cloudns.pro
+      secretName: spring-production-certificate         # Το TLS secret που θα δημιουργήσει ο cert-manager

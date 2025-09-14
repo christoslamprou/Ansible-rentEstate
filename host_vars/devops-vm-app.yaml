@@ -1,0 +1,13 @@
+app:                                   # Ρυθμίσεις για την εφαρμογή
+  env:                                
+    server.port: "{{app_port}}"        # Θύρα στην οποία θα τρέξει ο server (παίρνει τιμή από το app_port variable)
+    spring.datasource.username: dbuser # Όνομα χρήστη για τη βάση δεδομένων
+    spring.datasource.password: db12345# Κωδικός πρόσβασης για τη βάση δεδομένων (⚠️ καλύτερα να μπει σε vault/secret)
+    spring.datasource.url: jdbc:postgresql://172.161.130.21/mydb 
+                                       # JDBC URL για τη σύνδεση με PostgreSQL DB
+
+service:                               # Ρυθμίσεις για το systemd service
+  workingdir: "{{ ansible_user_dir }}/spring" 
+                                       # Ο φάκελος εργασίας όπου θα τρέχει η εφαρμογή
+  execstart: "java -jar {{ ansible_user_dir }}/spring/target/rentEstate-0.0.1-SNAPSHOT.jar" 
+                                       

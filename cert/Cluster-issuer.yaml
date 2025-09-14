@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  namespace: default
+spec:
+  acme:
+    # Connect to Let's Encrypt production API
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: it2022052@hua.gr
+    privateKeySecretRef:
+      name: account-key-prod
+    solvers:
+    - http01:
+        ingress:
+          class: public

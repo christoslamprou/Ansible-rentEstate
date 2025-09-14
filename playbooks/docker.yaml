@@ -1,0 +1,47 @@
+    # Εγκαθιστά βασικά πακέτα που χρειάζονται για HTTPS και repositories
+    - name: Install basic packages
+      apt:
+        name: "{{item}}"
+        state: present
+        update_cache: true
+      loop:
+        - software-properties-common  # Διαχείριση repositories
+        - curl                        # Εργαλείο για HTTP requests
+        - apt-transport-https         # Υποστήριξη HTTPS στα APT repos
+        - ca-certificates             # Πιστοποιητικά για ασφαλείς συνδέσεις
+
+    # Κατεβάζει και προσθέτει το GPG key της Docker για επαλήθευση πακέτων
+    - name: get key
+      shell: "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -"
+      #ignore_errors: yes
+
+    # Προσθέτει το επίσημο APT repository της Docker για Ubuntu 
+    - name: Add docker ppa
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+        update_cache: yes
+
+    # Εγκαθιστά το Docker Engine και το Docker Compose
+    - name: install docker
+      apt:
+        name: "{{item}}"
+        state: present
+        update_cache: true
+      loop:
+        - docker-ce         # Docker Engine
+        - docker-compose    # Docker Compose 
+
+    # Εκκινεί την υπηρεσία Docker και την ενεργοποιεί στο boot
+    - name: start docker service
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    # Προσθέτει τον τρέχοντα χρήστη στο group docker για χρήση Docker χωρίς sudo
+    - name: adding existing user to group docker
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: yes
